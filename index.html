@@ -113,7 +113,6 @@
   .kpis{grid-template-columns:repeat(6,1fr);}
   .mid{grid-template-columns:1fr; margin-top:18px;}
   .lower{grid-template-columns:1fr 1fr; margin-top:18px;}
-  .lower2{grid-template-columns:1.4fr 1fr; margin-top:18px;}
 
   .card{
     background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
@@ -171,7 +170,7 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .toast.err{border-color:#ff6b6b;}
 
-  @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr);}.mid,.lower,.lower2{grid-template-columns:1fr;}}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr);}.mid,.lower{grid-template-columns:1fr;}}
   @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr);}.dash{padding:14px;}.topbar h1{font-size:18px;}}
 </style>
 </head>
@@ -265,17 +264,6 @@
     <div class="card">
       <h3><span class="dot"></span>销售渠道分布</h3>
       <div class="bars" id="chan-bars"></div>
-    </div>
-  </div>
-
-  <div class="grid lower2">
-    <div class="card">
-      <h3><span class="dot"></span>票种售票量</h3>
-      <div class="bars" id="cnt-bars"></div>
-    </div>
-    <div class="card">
-      <h3><span class="dot"></span>项目核销</h3>
-      <div class="ministats" id="proj"></div>
     </div>
   </div>
 </div>
@@ -512,11 +500,6 @@ function renderDonut(elId, legendId, arr, valKey){
       <span class="nm" title="${esc(x.Name)}">${esc(x.Name)}</span><span class="pc">${pc}%</span></div>`;
   }).join("");
 }
-function renderMini(elId, arr){
-  $(elId).innerHTML=arr.map(x=>`
-    <div class="ministat"><div class="ml">${esc(x.Name)}</div>
-    <div class="mv">${fmt(Number(x.Count||0))}<span style="font-size:12px;color:var(--muted);font-weight:600;"> 次</span></div></div>`).join("");
-}
 
 /* ===================== data load ===================== */
 let refreshTimer=null, clockTimer=null, loading=false;
@@ -530,9 +513,7 @@ async function load(){
     renderKPIs(d.Today||{});
     renderBars("#rev-bars", d.TicketRevenueArray||[], "Amount", {dec:2,prefix:"¥"});
     renderBars("#chan-bars", d.ChannelArray||[], "Amount", {dec:2,prefix:"¥"});
-    renderBars("#cnt-bars", d.TicketCountArray||[], "Count", {});
     renderDonut("#donut","#pay-legend", d.PayTypeArray||[], "Amount");
-    renderMini("#proj", d.ProjectCheckArray||[]);
     $("#updated").textContent="最后更新 "+new Date().toLocaleTimeString("zh-CN");
     startClock(d.ServerTime);
     $("#refresh-btn").classList.remove("spin");
