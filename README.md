@@ -61,3 +61,12 @@ saas-ticket-dashboard/
 - 端点：`POST http://tour.ip239.com/LargeScreenReport/TicketDataScreenReport`
 - 请求体：`{ OrganId, BeginTime, EndTime, TodayBeginTime, TodayEndTime, Token }`
 - 数据模块：`Today` / `TicketRevenueArray` / `TicketCountArray` / `PayTypeArray` / `ChannelArray` / `VisitorTrendArray` / `ProjectCheckArray` / `ServerTime`
+
+## 安全说明
+
+- **访问令牌不入库**：SaaS 访问令牌（`Token`）仅在首次登录时由用户本地粘贴，保存在浏览器 `localStorage` 中，不会写入任何代码/仓库。请不要在公开仓库中提交真实令牌。
+- **令牌轮换**：SaaS 访问令牌一旦泄露，请立即在 SaaS 系统侧作废/重新生成。
+- **XSS 防护**：所有来自接口的动态文本（票名、渠道名、日期等）在渲染时均经过 HTML 转义，避免恶意数据造成注入。
+- **本地密码**：本地密码经 SHA-256 哈希后保存，仅用于「记住登录」；其哈希值不发送到服务器。多用户/公共设备请使用「退出登录」清除本地凭据。
+- **传输安全**：数据接口为 `http://`（非 https），令牌在公网传输未加密。请勿在公共网络下使用；若部署到 https 站点（如 GitHub Pages），浏览器会因混合内容策略阻止该 http 接口，需自行增加 https 代理。
+

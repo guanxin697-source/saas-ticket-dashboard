@@ -287,6 +287,19 @@ function hash(str){ // simple stable hash for local lock (not security-critical)
   for(let i=0;i<str.length;i++) h=((h<<5)+h+str.charCodeAt(i))>>>0;
   return h.toString(36);
 }
+// HTML 转义：防止接口返回的数据(如票名)造成 XSS 注入
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"'`$]/g, c=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;','$':'&#36;'
+  }[c]));
+}
+// 本地密码哈希：优先使用 Web Crypto SHA-256，否则回退简单哈希
+async function pwHash(pw){
+  try{
+    const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){ return hash(pw); }
+}
 function toast(msg, err=false){
   const t=$("#toast"); t.textContent=msg; t.className="toast show"+(err?" err":"");
   clearTimeout(t._t); t._t=setTimeout(()=>t.className="toast",2600);
@@ -366,7 +379,7 @@ function renderBars(elId, arr, valKey, {dec=0,prefix=""}={}){
   $(elId).innerHTML=arr.map(x=>{
     const v=Number(x[valKey]||0);
     return `<div class="bar-row">
-      <div class="top"><span class="nm" title="${x.Name}">${x.Name}</span>
+      <div class="top"><span class="nm" title="${esc(x.Name)}">${esc(x.Name)}</span>
       <span class="vv"><b>${prefix}${fmt(v,dec)}</b>${x.Count!==undefined&&valKey!=="Count"?` · ${fmt(x.Count)}张`:""}</span></div>
       <div class="track"><i data-w="${Math.round(v/max*100)}"></i></div></div>`;
   }).join("");
@@ -393,14 +406,14 @@ function renderDonut(elId, legendId, arr, valKey){
   $(legendId).innerHTML=arr.map((x,i)=>{
     const pc=(Number(x[valKey]||0)/total*100).toFixed(1);
     return `<div class="li"><span class="sw" style="background:${PALETTE[i%PALETTE.length]}"></span>
-      <span class="nm" title="${x.Name}">${x.Name}</span><span class="pc">${pc}%</span></div>`;
+      <span class="nm" title="${esc(x.Name)}">${esc(x.Name)}</span><span class="pc">${pc}%</span></div>`;
   }).join("");
 }
 function renderTrend(elId, arr){
   const W=720, H=240, pad=34;
   const max=Math.max(...arr.map(x=>Number(x.Count||0)),1);
   const n=arr.length;
-  const xw=(W-pad*2)/(n-1);
+  const xw=n>1?(W-pad*2)/(n-1):0;
   const pts=arr.map((x,i)=>[pad+i*xw, H-pad-(Number(x.Count||0)/max)*(H-pad*2)]);
   const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
   const area=line+` L ${pts[n-1][0].toFixed(1)} ${H-pad} L ${pts[0][0].toFixed(1)} ${H-pad} Z`;
@@ -408,7 +421,7 @@ function renderTrend(elId, arr){
   arr.forEach((x,i)=>{
     if(i%Math.ceil(n/8)===0||i===n-1){
       dots+=`<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="3.5" fill="var(--accent)"/>`;
-      labels+=`<text class="axis" x="${pts[i][0]}" y="${H-12}" text-anchor="middle">${x.Date.slice(5)}</text>`;
+      labels+=`<text class="axis" x="${pts[i][0]}" y="${H-12}" text-anchor="middle">${esc(x.Date.slice(5))}</text>`;
     }
   });
   $(elId).innerHTML=`<svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
@@ -422,7 +435,7 @@ function renderTrend(elId, arr){
 }
 function renderMini(elId, arr){
   $(elId).innerHTML=arr.map(x=>`
-    <div class="ministat"><div class="ml">${x.Name}</div>
+    <div class="ministat"><div class="ml">${esc(x.Name)}</div>
     <div class="mv">${fmt(Number(x.Count||0))}<span style="font-size:12px;color:var(--muted);font-weight:600;"> 次</span></div></div>`).join("");
 }
 
@@ -488,7 +501,7 @@ async function doLogin(){
   try{
     const d=await fetchData(token, new Date(firstOfMonth()), new Date());
     localStorage.setItem(LS_TOKEN, token);
-    localStorage.setItem(LS_PW, hash(pass));
+    localStorage.setItem(LS_PW, await pwHash(pass));
     $("#login").classList.add("hidden");
     $("#app").classList.remove("hidden");
     toast("登录成功，已记住密码");
