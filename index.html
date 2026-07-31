@@ -497,7 +497,16 @@ function showLogin(){
   $("#login-err").textContent="";
 }
 async function doLogin(){
-  const token=$("#f-token").value.trim();
+  // 令牌清洗：优先从 "Token=...&?#" 中精准截取令牌，并去除引号/零宽字符/空白，最终只保留令牌字符
+  let token=$("#f-token").value;
+  const m=token.match(/Token=\s*([^&?#\s"']*)/i);
+  if(m) token=m[1];
+  token=token
+    .replace(/["'\u201c\u201d]/g, "")
+    .replace(/[­\u00a0\u200b\u200c\u200d\ufeff]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
   const pass=$("#f-pass").value;
   const err=$("#login-err");
   if(!token){ err.textContent="请填写访问令牌"; return; }
@@ -513,7 +522,7 @@ async function doLogin(){
     await load();
     scheduleAuto();
   }catch(e){
-    err.textContent="登录失败："+e.message;
+    err.textContent="登录失败："+e.message+"（令牌长度 "+token.length+" 字符，请确认只粘贴 Token= 之后、不含空格换行的内容）";
   }finally{
     btn.disabled=false; btn.textContent="登 录 并 记 住";
   }
