@@ -111,7 +111,7 @@
 
   .grid{display:grid;gap:18px;}
   .kpis{grid-template-columns:repeat(6,1fr);}
-  .mid{grid-template-columns:1.6fr 1fr; margin-top:18px;}
+  .mid{grid-template-columns:1fr; margin-top:18px;}
   .lower{grid-template-columns:1fr 1fr; margin-top:18px;}
   .lower2{grid-template-columns:1.4fr 1fr; margin-top:18px;}
 
@@ -249,10 +249,6 @@
 
   <div class="grid mid">
     <div class="card">
-      <h3><span class="dot"></span>游客入园趋势（当日）</h3>
-      <div id="trend"></div>
-    </div>
-    <div class="card">
       <h3><span class="dot"></span>支付方式占比</h3>
       <div class="donut-wrap">
         <div class="donut" id="donut"></div>
@@ -292,7 +288,7 @@ const LOGIN_API = "https://saas.ip239.com/Api/LoginUser";
 const REPORT_API_HTTPS = "https://tour.ip239.com/LargeScreenReport/TicketDataScreenReport";
 const REPORT_API_HTTP  = "http://tour.ip239.com/LargeScreenReport/TicketDataScreenReport";
 const FALLBACK_ORG = "13276";
-const REFRESH_MS = 3000;                                            // 每 3 秒自动刷新
+const REFRESH_MS = 10000;                                           // 每 10 秒自动刷新
 const LS_USER="td_user", LS_PW="td_pw", LS_PF="td_pf", LS_REM="td_rem", LS_ORG="td_org", LS_ORGNAME="td_orgname", LS_THEME="td_theme";
 const PALETTE = ["#19e3a5","#28c0ff","#ffd479","#ff7eb6","#a78bfa","#34d399","#f59e0b","#60a5fa","#f472b6","#22d3ee"];
 
@@ -516,28 +512,6 @@ function renderDonut(elId, legendId, arr, valKey){
       <span class="nm" title="${esc(x.Name)}">${esc(x.Name)}</span><span class="pc">${pc}%</span></div>`;
   }).join("");
 }
-function renderTrend(elId, arr){
-  const W=720, H=240, pad=34;
-  const max=Math.max(...arr.map(x=>Number(x.Count||0)),1);
-  const n=arr.length, xw=n>1?(W-pad*2)/(n-1):0;
-  const pts=arr.map((x,i)=>[pad+i*xw, H-pad-(Number(x.Count||0)/max)*(H-pad*2)]);
-  const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
-  const area=line+` L ${pts[n-1][0].toFixed(1)} ${H-pad} L ${pts[0][0].toFixed(1)} ${H-pad} Z`;
-  let dots="", labels="";
-  arr.forEach((x,i)=>{
-    if(i%Math.ceil(n/8)===0||i===n-1){
-      dots+=`<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="3.5" fill="var(--accent)"/>`;
-      labels+=`<text class="axis" x="${pts[i][0]}" y="${H-12}" text-anchor="middle">${esc(String(x.Date||"").slice(5))}</text>`;
-    }
-  });
-  $(elId).innerHTML=`<svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-    <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="var(--accent)" stop-opacity=".35"/>
-      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
-    <path d="${area}" fill="url(#ag)"/>
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${dots}${labels}</svg>`;
-}
 function renderMini(elId, arr){
   $(elId).innerHTML=arr.map(x=>`
     <div class="ministat"><div class="ml">${esc(x.Name)}</div>
@@ -558,7 +532,6 @@ async function load(){
     renderBars("#chan-bars", d.ChannelArray||[], "Amount", {dec:2,prefix:"¥"});
     renderBars("#cnt-bars", d.TicketCountArray||[], "Count", {});
     renderDonut("#donut","#pay-legend", d.PayTypeArray||[], "Amount");
-    renderTrend("#trend", d.VisitorTrendArray||[]);
     renderMini("#proj", d.ProjectCheckArray||[]);
     $("#updated").textContent="最后更新 "+new Date().toLocaleTimeString("zh-CN");
     startClock(d.ServerTime);
@@ -647,7 +620,7 @@ function finishLogin(token, orgId, orgName){
   $("#login").classList.add("hidden");
   $("#merchant").classList.add("hidden");
   $("#app").classList.remove("hidden");
-  $("#org-sub").textContent=(orgName?orgName+" · ":"")+"机构ID "+orgId+" · 当日数据（每 3 秒刷新）";
+  $("#org-sub").textContent=(orgName?orgName+" · ":"")+"机构ID "+orgId+" · 当日数据（每 10 秒刷新）";
   toast("登录成功");
   load(); scheduleAuto();
 }
