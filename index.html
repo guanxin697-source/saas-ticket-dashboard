@@ -192,7 +192,7 @@
     <button id="login-btn" class="btn">登 录 并 记 住</button>
     <div id="login-err" class="login-err"></div>
     <div class="login-hint">
-      首次登录请粘贴你的 SaaS 访问令牌到上方输入框，并设置本地密码。登录后令牌会保存在本机浏览器中，之后打开将自动登录并刷新数据，无需再次输入。
+      首次登录请粘贴你的 SaaS 访问令牌（可直接整条粘贴浏览器地址栏的登录网址，系统会自动提取 Token= 后面那段约 320 字符的长串），并设置本地密码。登录后令牌会保存在本机浏览器中，之后打开将自动登录并刷新数据，无需再次输入。
     </div>
   </div>
 </div>
@@ -488,6 +488,20 @@ function scheduleAuto(){
   refreshTimer=setInterval(()=>{ if(!$("#app").classList.contains("hidden")) load(); }, 30000);
 }
 
+/* ---------- token 清洗：健壮地从各种粘贴形态中提取令牌 ---------- */
+function cleanToken(raw){
+  let t=String(raw==null?"":raw).trim();
+  // 1) 若粘贴的是整条 URL（含 Token= 参数），精准取其值（截止到 & ? # 空白 引号）
+  const m=t.match(/Token=\s*([^&#?\s"']+)/i);
+  if(m) t=m[1];
+  // 2) 去掉包裹的引号、零宽字符、空白、换行等杂质（不再按字符白名单删除，避免误删合法字符）
+  t=t.replace(/^["'\s]+|["'\s]+$/g,"")
+     .replace(/["'\u201c\u201d]/g,"")
+     .replace(/[­\u00a0\u200b\u200c\u200d\ufeff\r\n\t]/g,"")
+     .trim();
+  return t;
+}
+
 /* ---------- login flow ---------- */
 function showLogin(){
   clearInterval(refreshTimer); clearInterval(clockTimer);
@@ -497,20 +511,17 @@ function showLogin(){
   $("#login-err").textContent="";
 }
 async function doLogin(){
-  // 令牌清洗：优先从 "Token=...&?#" 中精准截取令牌，并去除引号/零宽字符/空白，最终只保留令牌字符
-  let token=$("#f-token").value;
-  const m=token.match(/Token=\s*([^&?#\s"']*)/i);
-  if(m) token=m[1];
-  token=token
-    .replace(/["'\u201c\u201d]/g, "")
-    .replace(/[­\u00a0\u200b\u200c\u200d\ufeff]/g, "")
-    .replace(/\s+/g, "")
-    .replace(/[^a-z0-9]/g, "")
-    .trim();
+  // 令牌清洗：优先从整条 URL / "Token=..." 中精准截取令牌，去除引号/零宽字符/空白，保留令牌原始字符
+  let token=cleanToken($("#f-token").value);
   const pass=$("#f-pass").value;
   const err=$("#login-err");
-  if(!token){ err.textContent="请填写访问令牌"; return; }
+  if(!token){ err.textContent="请填写访问令牌（可粘贴整条登录网址，系统会自动提取）"; return; }
   if(!pass){ err.textContent="请设置本地密码"; return; }
+  // 预校验：正常 SaaS 令牌约 320 字符（以 iklag 开头）。过短通常是只复制了片段。
+  if(token.length < 80){
+    err.textContent="令牌过短（"+token.length+" 字符）。正常令牌约 320 字符、以 iklag 开头。请打开 saas.ip239.com 登录页，复制地址栏中 “Token=” 后面【完整的】长字符串（可直接整条网址粘贴，系统会自动提取）。";
+    return;
+  }
   const btn=$("#login-btn"); btn.disabled=true; btn.textContent="验证中…"; err.textContent="";
   try{
     const d=await fetchData(token, new Date(firstOfMonth()), new Date());
@@ -522,7 +533,8 @@ async function doLogin(){
     await load();
     scheduleAuto();
   }catch(e){
-    err.textContent="登录失败："+e.message+"（令牌长度 "+token.length+" 字符，请确认只粘贴 Token= 之后、不含空格换行的内容）";
+    const snip = token.length>16 ? (token.slice(0,8)+"…"+token.slice(-8)) : token;
+    err.textContent="登录失败："+e.message+" 〔已发送令牌 "+token.length+" 字符，开头 "+snip+"〕";
   }finally{
     btn.disabled=false; btn.textContent="登 录 并 记 住";
   }
