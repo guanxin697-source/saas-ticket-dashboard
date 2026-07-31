@@ -273,7 +273,8 @@
 <div id="toast" class="toast"></div>
 
 <script>
-const API = "http://tour.ip239.com/LargeScreenReport/TicketDataScreenReport";
+const API_HTTPS = "https://tour.ip239.com/LargeScreenReport/TicketDataScreenReport";
+const API_HTTP  = "http://tour.ip239.com/LargeScreenReport/TicketDataScreenReport";
 const ORG_ID = "13276";
 const DEFAULT_TOKEN = ""; // 留空：首次登录时粘贴你的 SaaS 访问令牌（不要将真实令牌提交到公开仓库）
 const LS_TOKEN = "td_token", LS_PW = "td_pw", LS_THEME = "td_theme";
@@ -333,19 +334,23 @@ function cycleTheme(){
 }
 
 /* ---------- API ---------- */
+async function postData(url, body){
+  const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error("网络错误 "+r.status);
+  const d=await r.json();
+  if(Number(d.resultcode)!==200) throw new Error(d.resultcontent||"接口返回异常");
+  return d.data;
+}
 async function fetchData(token, begin, end){
-  const today = end; // use end date as "today" window for Today stats
   const body={
     OrganId:ORG_ID,
     BeginTime:dateStr(begin,false), EndTime:dateStr(end,true),
     TodayBeginTime:dateStr(end,false), TodayEndTime:dateStr(end,true),
     Token:token
   };
-  const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  if(!r.ok) throw new Error("网络错误 "+r.status);
-  const d=await r.json();
-  if(Number(d.resultcode)!==200) throw new Error(d.resultcontent||"接口返回异常");
-  return d.data;
+  // 优先 HTTPS（可部署到任意 HTTPS 站点/公网），失败回退 HTTP
+  try{ return await postData(API_HTTPS, body); }
+  catch(e){ return await postData(API_HTTP, body); }
 }
 
 /* ---------- render ---------- */
