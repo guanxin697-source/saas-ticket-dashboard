@@ -110,7 +110,7 @@
   @keyframes spin{to{transform:rotate(360deg);}}
 
   .grid{display:grid;gap:18px;}
-  .kpis{grid-template-columns:repeat(6,1fr);}
+  .kpis{grid-template-columns:repeat(4,1fr);}
   .lower{grid-template-columns:1fr 1fr; margin-top:18px;}
 
   .card{
@@ -158,7 +158,7 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .toast.err{border-color:#ff6b6b;}
 
-  @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr);}.lower{grid-template-columns:1fr;}}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr);}.lower{grid-template-columns:1fr;}}
   @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr);}.dash{padding:14px;}.topbar h1{font-size:18px;}}
 </style>
 </head>
@@ -253,6 +253,8 @@
 const LOGIN_API = "https://saas.ip239.com/Api/LoginUser";
 const REPORT_API_HTTPS = "https://tour.ip239.com/LargeScreenReport/TicketDataScreenReport";
 const REPORT_API_HTTP  = "http://tour.ip239.com/LargeScreenReport/TicketDataScreenReport";
+const VERIFY_API_HTTPS = "https://tour.ip239.com/TickVerificationInfo/GetPage";   // 今日核销额（报表统计→核销统计 总金额）
+const VERIFY_API_HTTP  = "http://tour.ip239.com/TickVerificationInfo/GetPage";
 const FALLBACK_ORG = "13276";
 const REFRESH_MS = 10000;                                           // 每 10 秒自动刷新
 const LS_USER="td_user", LS_PW="td_pw", LS_PF="td_pf", LS_REM="td_rem", LS_ORG="td_org", LS_ORGNAME="td_orgname", LS_THEME="td_theme";
@@ -420,30 +422,71 @@ async function fetchReport(token, orgId){
   catch(err){ return await callReport(REPORT_API_HTTP, body); }
 }
 
+// 今日核销额：取自「报表统计 → 核销统计」的总金额（amount 字段为「分」，需 /100）
+// 接口按日期范围生效，分页拉取全部行后累加 Price/100
+async function fetchVerification(token){
+  const {s,e}=todayRange();                       // 仅当日数据
+  const sumPage=async(url)=>{
+    let total=0, page=1; const size=1000;
+    while(true){
+      const body={ PageIndex:page, PageSize:size, BeginTime:s, EndTime:e, Token:token };
+      const d=await postJSON(url, body);
+      if(!d || String(d.resultcode)!=="200") throw new Error((d&&d.resultcontent)||"核销接口异常");
+      const rows=Array.isArray(d.data)?d.data:[];
+      for(const r of rows){ total += Number(r.Price||r.price||0); }
+      const totalRows=Number(d.totalRows||0);
+      if(rows.length<size) break;
+      if(totalRows && page*size>=totalRows) break;
+      page++;
+    }
+    return total/100;                             // 分 → 元
+  };
+  try{ return await sumPage(VERIFY_API_HTTPS); }
+  catch(err){ return await sumPage(VERIFY_API_HTTP); }
+}
+
 /* ===================== render ===================== */
-function renderKPIs(t){
+function renderKPIs(t, verifyAmount){
+  // 今日入园 / 今日出园 / 当前在场 已移除；今日销售额紧随今日售票之后；并新增「今日核销额」
   const items=[
-    {k:"InCount",label:"今日入园",unit:"人"},
-    {k:"CurrentInCount",label:"当前在场",unit:"人"},
     {k:"SellCount",label:"今日售票",unit:"张"},
-    {k:"CheckCount",label:"今日检票",unit:"人"},
-    {k:"OutCount",label:"今日出园",unit:"人"},
     {k:"SellAmount",label:"今日销售额",unit:"",money:true},
+    {k:"CheckCount",label:"今日检票",unit:"人"},
+    {value:verifyAmount,label:"今日核销额",unit:"",money:true},
   ];
-  const max=Math.max(...items.map(i=>Number(t[i.k]||0)),1);
-  $("#kpis").innerHTML=items.map((i,idx)=>`
-    <div class="card kpi" style="animation-delay:${idx*50}ms">
+  const getV=i=> (i.k!==undefined ? Number(t[i.k]||0) : (i.value==null||isNaN(Number(i.value)) ? null : Number(i.value)));
+  const vals=items.map(getV);
+  const nums=vals.map(v=> v==null?0:v);
+  const max=Math.max(...nums,1);
+  $("#kpis").innerHTML=items.map((i,idx)=>{
+    const v=vals[idx], missing=(v==null);
+    const shown = missing ? "—" : (i.money ? v.toFixed(2) : v);
+    return `
+    <div class="card kpi${i.value!==undefined?' verify':''}" style="animation-delay:${idx*50}ms">
       <div class="label">${i.label}</div>
-      <div class="val" data-v="${i.money?Number(t[i.k]||0).toFixed(2):t[i.k]||0}" data-dec="${i.money?2:0}">
-        <span class="num">${i.money?"¥":""}0</span><span class="unit">${i.unit}</span>
+      <div class="val">
+        <span class="num" data-v="${missing?0:v}" data-dec="${i.money?2:0}" data-prefix="${i.money?"¥":""}" data-missing="${missing}">${i.money&&!missing?"¥":""}${shown}</span><span class="unit">${i.unit}</span>
       </div>
-      <div class="bar"><i data-w="${Math.round(Number(t[i.k]||0)/max*100)}"></i></div>
-    </div>`).join("");
+      <div class="bar"><i data-w="${Math.round((missing?0:v)/max*100)}"></i></div>
+    </div>`;
+  }).join("");
   $("#kpis").querySelectorAll(".val .num").forEach(el=>{
-    const dec=+el.parentElement.dataset.dec;
-    animateValue(el, +el.parentElement.dataset.v, {prefix: dec? "¥":"", dec});
+    if(el.dataset.missing==="true") return;          // 核销额拉取失败时仅显示「—」，不再滚动动画
+    const dec=+el.dataset.dec, prefix=el.dataset.prefix||"";
+    animateValue(el, +el.dataset.v, {prefix, dec});
   });
   $("#kpis").querySelectorAll(".bar i").forEach(i=>requestAnimationFrame(()=>i.style.width=i.dataset.w+"%"));
+  $("#kpis").dataset.max=max;                        // 供异步回填核销额时重算进度条
+}
+// 核销额异步回填：仅更新「今日核销额」卡片，不影响其余 KPI 显示
+function updateVerifyKPI(amount){
+  const card=document.querySelector("#kpis .kpi.verify");
+  if(!card) return;
+  const num=card.querySelector(".val .num"), bar=card.querySelector(".bar i");
+  if(amount==null||isNaN(Number(amount))){ num.textContent="—"; bar.style.width="0%"; return; }
+  num.textContent="¥"+fmt(Number(amount),2);
+  const max=Number($("#kpis").dataset.max||1);
+  bar.style.width=Math.min(100,Math.round(Number(amount)/max*100))+"%";
 }
 function renderBars(elId, arr, valKey, {dec=0,prefix=""}={}){
   const max=Math.max(...arr.map(x=>Number(x[valKey]||0)),1);
@@ -466,12 +509,15 @@ async function load(){
   if(loading) return; loading=true;
   try{
     const d=await fetchReport(token, orgId);          // 仅当日数据
-    renderKPIs(d.Today||{});
+    renderKPIs(d.Today||{}, null);                     // 先渲染售票类 KPI，核销额留空待回填
     renderBars("#rev-bars", d.TicketRevenueArray||[], "Amount", {dec:2,prefix:"¥"});
     renderBars("#chan-bars", d.ChannelArray||[], "Amount", {dec:2,prefix:"¥"});
     $("#updated").textContent="最后更新 "+new Date().toLocaleTimeString("zh-CN");
     startClock(d.ServerTime);
     $("#refresh-btn").classList.remove("spin");
+    // 今日核销额异步拉取：即使失败也不影响其余数据展示
+    fetchVerification(token).then(v=>updateVerifyKPI(v))
+      .catch(err=>{ console.warn("今日核销额拉取失败：", err); toast("今日核销额获取失败，其余数据正常", false); });
   }catch(e){
     $("#refresh-btn").classList.remove("spin");
     if(/token|登录|授权|失效|过期|auth/i.test(e.message)){
